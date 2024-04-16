@@ -1,0 +1,9 @@
+# Ignore build directory
+/build/
+
+# Ignore files starting with 'Package'
+Package*
+
+# Ignore Makefile and its variants
+Makefile*
+/dist/
