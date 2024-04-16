@@ -5,5 +5,5 @@
 Package*
 
 # Ignore Makefile and its variants
-Makefile*
+
 /dist/
