@@ -122,25 +122,24 @@ void generateHMACSecretKey() {
         {CKA_SENSITIVE, &a_true, sizeof (CK_BBOOL)}, // Set CKA_SENSITIVE
         {CKA_EXTRACTABLE, &a_false, sizeof (CK_BBOOL)} // Set CKA_EXTRACTABLE
     };
-    
+
     CK_BBOOL yes = CK_TRUE;
     CK_BBOOL no = CK_FALSE;
     CK_UTF8CHAR label[] = "auditlog secret key";
     CK_ULONG keySize = 256;
-    
-    CK_ATTRIBUTE attrib[] = 
-    {
+
+    CK_ATTRIBUTE attrib[] ={
         {CKA_ID, id, sizeof (id)},
         {CKA_KEY_TYPE, &a_key_type, sizeof (CK_KEY_TYPE)},
-        {CKA_TOKEN,         &yes,       sizeof(CK_BBOOL)},
-        {CKA_PRIVATE,       &yes,       sizeof(CK_BBOOL)},
-        {CKA_SENSITIVE,     &yes,       sizeof(CK_BBOOL)},
-        {CKA_EXTRACTABLE,   &yes,       sizeof(CK_BBOOL)},
-        {CKA_MODIFIABLE,    &yes,       sizeof(CK_BBOOL)},
-        {CKA_VERIFY,       &yes,       sizeof(CK_BBOOL)},
-        {CKA_SIGN,       &yes,       sizeof(CK_BBOOL)},
-        {CKA_LABEL,         &label,     sizeof(label)},
-	{CKA_VALUE_LEN,	    &keySize,	sizeof(CK_ULONG)}
+        {CKA_TOKEN, &yes, sizeof (CK_BBOOL)},
+        {CKA_PRIVATE, &yes, sizeof (CK_BBOOL)},
+        {CKA_SENSITIVE, &yes, sizeof (CK_BBOOL)},
+        {CKA_EXTRACTABLE, &yes, sizeof (CK_BBOOL)},
+        {CKA_MODIFIABLE, &yes, sizeof (CK_BBOOL)},
+        {CKA_VERIFY, &yes, sizeof (CK_BBOOL)},
+        {CKA_SIGN, &yes, sizeof (CK_BBOOL)},
+        {CKA_LABEL, &label, sizeof (label)},
+        {CKA_VALUE_LEN, &keySize, sizeof (CK_ULONG)}
     };
 
     //CKA_SENSITIVE = CK_TRUE, CKA_EXTRACTALBE=CK_FALSE
@@ -155,6 +154,70 @@ void generateHMACSecretKey() {
     checkOperation(p11Func->C_GenerateKey(hSession, &gen_mechanism, key_attribute,
             sizeof (key_attribute) / sizeof (*key_attribute), &key_handle), "key oluştur");
 
+}
+
+#include <string>
+#include <locale>
+#include <codecvt>
+
+std::string hexToUtf8(const std::string& hexString) {
+    // Convert hexadecimal string to Unicode code point
+    int codePoint = std::stoi(hexString, nullptr, 16);
+
+    // Convert Unicode code point to UTF-8 string
+    std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> converter;
+    std::string utf8String = converter.to_bytes(static_cast<char32_t>(codePoint));
+
+    return utf8String;
+}
+
+
+// This functions counts the number of AES keys in a token.
+
+void countSecretKeys() {
+    CK_BBOOL yes = CK_TRUE;
+    CK_OBJECT_CLASS objClass = CKO_SECRET_KEY;
+    CK_KEY_TYPE objType = CKK_GENERIC_SECRET;
+    CK_OBJECT_HANDLE objHandle[10];
+    CK_ULONG objCount = 0;
+    CK_ULONG totalObjects = 0;
+
+    CK_ATTRIBUTE attrib[] ={
+        { CKA_TOKEN, &yes, sizeof (CK_BBOOL)},
+        { CKA_CLASS, &objClass, sizeof (CK_OBJECT_CLASS)},
+        { CKA_KEY_TYPE, &objType, sizeof (CK_KEY_TYPE)}
+    };
+    CK_ULONG attribLen = sizeof (attrib) / sizeof (*attrib);
+
+    checkOperation(p11Func->C_FindObjectsInit(hSession, attrib, attribLen), "C_FindObjectsInit");
+    do {
+        checkOperation(p11Func->C_FindObjects(hSession, objHandle, 10, &objCount), "C_FindObjects");
+        if (totalObjects >0){
+            CK_BYTE_PTR value_handle;
+            CK_ATTRIBUTE template1[] = {{CKA_LABEL, NULL_PTR, 0}};
+            checkOperation(p11Func->C_GetAttributeValue(hSession, objHandle[2], &template1[0], 1), "C_GetAttributeValue");
+            value_handle = (CK_BYTE_PTR) malloc(template1[0].ulValueLen);
+            //tempalte pointerını kendi pointerine eşitleyince kendi pointerin üzerinden erişebiiyosun.
+            template1[0].pValue = value_handle;
+            checkOperation(p11Func->C_GetAttributeValue(hSession, objHandle[2], &template1[0], 1), "C_GetAttributeValue");
+            
+            std::cout << "LABEL: " << value_handle << std::endl;
+
+            //bunun unutulmaması lazım.
+            free(value_handle);
+
+            /*
+            if (invest.ulValueLen == CK_UNAVAILABLE_INFORMATION){
+                std::cout << "bilgi elde edilemedi" << std::endl;
+            }*/
+        }
+        std::cout << "obj count: " << objCount << std::endl;
+        std::cout << "total object count: " << totalObjects << std::endl;
+
+        totalObjects += objCount;
+    } while (objCount != 0);
+    checkOperation(p11Func->C_FindObjectsFinal(hSession), "C_FindObjectsFinal");
+    cout << "AES keys found : " << totalObjects << endl;
 }
 
 /*
@@ -193,7 +256,8 @@ int main(int argc, char **argv) {
         std::cout << "imza geçersiz" << std::endl;
     }*/
 
-    generateHMACSecretKey();
+    //generateHMACSecretKey();
+    countSecretKeys();
 
     disconnectFromSlot();
     cout << "Disconnected from slot." << endl;
