@@ -83,6 +83,37 @@ bool verifyHMAC(CK_BYTE* data, CK_OBJECT_HANDLE &hKey, std::unique_ptr<CK_BYTE>&
     }
 }
 
+// This function generates an AES-256 Key.
+// Token Object | Private | Sensitive | Extractable | Modifiable | Can encrypt and decrypt 
+void generateAesKey()
+{
+    CK_OBJECT_HANDLE objHandle = 0;
+    CK_MECHANISM mech = {CKM_AES_KEY_GEN};
+    CK_BBOOL yes = CK_TRUE;
+    CK_BBOOL no = CK_FALSE;
+    CK_UTF8CHAR label[] = "aes_key";
+    CK_ULONG keySize = 32;
+
+    CK_ATTRIBUTE attrib[] = 
+    {
+        {CKA_TOKEN,         &yes,       sizeof(CK_BBOOL)},
+        {CKA_PRIVATE,       &yes,       sizeof(CK_BBOOL)},
+        {CKA_SENSITIVE,     &yes,       sizeof(CK_BBOOL)},
+        {CKA_EXTRACTABLE,   &yes,       sizeof(CK_BBOOL)},
+        {CKA_MODIFIABLE,    &yes,       sizeof(CK_BBOOL)},
+        {CKA_ENCRYPT,       &yes,       sizeof(CK_BBOOL)},
+        {CKA_DECRYPT,       &yes,       sizeof(CK_BBOOL)},
+        {CKA_LABEL,         &label,     sizeof(label)},
+	{CKA_VALUE_LEN,	    &keySize,	sizeof(CK_ULONG)}
+    };
+
+    CK_ULONG attribLen = sizeof(attrib) / sizeof(*attrib);
+
+    checkOperation(p11Func->C_GenerateKey(hSession, &mech, attrib, attribLen, &objHandle), "C_GenerateKey");
+
+    cout << "AES-256 Key generated as handle : " << objHandle << endl;
+}
+
 void generateHMACSecretKey() {
     // CKA_KEY_TYPE: key tipi (secret)
     //CKA_ID: key indentifier (Byte Array) 
@@ -101,7 +132,7 @@ void generateHMACSecretKey() {
     CK_BBOOL a_false = CK_FALSE;
     CK_ULONG key_size = 256;
     CK_KEY_TYPE a_key_type = CKK_GENERIC_SECRET;
-    CK_BYTE id[] = {123};
+    CK_BYTE id[] = "721";
     //{CKA_LABEL, label, sizeof(label)-1};
     CK_MECHANISM_TYPE key_gen_mech_type = CKM_GENERIC_SECRET_KEY_GEN;
     CK_MECHANISM a_allowed_operations[] = {
@@ -109,26 +140,15 @@ void generateHMACSecretKey() {
     };
 
     //#define CKR_TEMPLATE_INCOMPLETE           0x000000D0UL
-
     //CKA_SENSITIVE, CKA_EXTRACTABLE vermek gerekebilir buraya
     //CKA_LOCAL eğer sen setlersen hata veriyor bu işi fonksiyona bırakman lazım gibi.
-    CK_ATTRIBUTE key_attribute[] = {
-        {CKA_KEY_TYPE, &a_key_type, sizeof (CK_KEY_TYPE)},
-        {CKA_VALUE_LEN, &key_size, sizeof (CK_ULONG)},
-        {CKA_ID, id, sizeof (id)},
-        {CKA_DERIVE, &a_false, sizeof (CK_BBOOL)},
-        {CKA_SIGN, &a_true, sizeof (CK_BBOOL)},
-        {CKA_VERIFY, &a_true, sizeof (CK_BBOOL)},
-        {CKA_SENSITIVE, &a_true, sizeof (CK_BBOOL)}, // Set CKA_SENSITIVE
-        {CKA_EXTRACTABLE, &a_false, sizeof (CK_BBOOL)} // Set CKA_EXTRACTABLE
-    };
 
     CK_BBOOL yes = CK_TRUE;
     CK_BBOOL no = CK_FALSE;
-    CK_UTF8CHAR label[] = "auditlog secret key";
+    CK_UTF8CHAR label[] = "auditlog secret key1";
     CK_ULONG keySize = 256;
 
-    CK_ATTRIBUTE attrib[] ={
+    CK_ATTRIBUTE attrib[] = {
         {CKA_ID, id, sizeof (id)},
         {CKA_KEY_TYPE, &a_key_type, sizeof (CK_KEY_TYPE)},
         {CKA_TOKEN, &yes, sizeof (CK_BBOOL)},
@@ -147,77 +167,136 @@ void generateHMACSecretKey() {
 
     //CKM_GENERIC_SECRET_KEY_GEN sadece anahtar oluşturma ile kullanılabiliyor.
     CK_MECHANISM gen_mechanism = {CKM_GENERIC_SECRET_KEY_GEN, NULL_PTR, 0}; //type_of_mechanism, pointer to param(if required), length of param
-    std::cout << "attribute uzunluk" << sizeof (key_attribute) / sizeof (*key_attribute) << std::endl;
+    std::cout << "attribute uzunluk" << sizeof (attrib) / sizeof (*attrib) << std::endl;
     std::cout << "allowed mac uzunluk" << sizeof (CKM_GENERIC_SECRET_KEY_GEN) / sizeof (CK_MECHANISM) << std::endl;
 
     //bu ismi refaktörle
-    checkOperation(p11Func->C_GenerateKey(hSession, &gen_mechanism, key_attribute,
-            sizeof (key_attribute) / sizeof (*key_attribute), &key_handle), "key oluştur");
+    checkOperation(p11Func->C_GenerateKey(hSession, &gen_mechanism, attrib,
+            sizeof (attrib) / sizeof (*attrib), &key_handle), "key oluştur");
+    
+    std::cout << "key oluşturuldu" << std::endl;
 
 }
 
 #include <string>
 #include <locale>
 #include <codecvt>
+#include <regex>
 
 std::string hexToUtf8(const std::string& hexString) {
     // Convert hexadecimal string to Unicode code point
     int codePoint = std::stoi(hexString, nullptr, 16);
 
     // Convert Unicode code point to UTF-8 string
-    std::wstring_convert<std::codecvt_utf8<char32_t>, char32_t> converter;
-    std::string utf8String = converter.to_bytes(static_cast<char32_t>(codePoint));
+    std::wstring_convert < std::codecvt_utf8<char32_t>, char32_t> converter;
+    std::string utf8String = converter.to_bytes(static_cast<char32_t> (codePoint));
 
     return utf8String;
 }
 
-
 // This functions counts the number of AES keys in a token.
-
-void countSecretKeys() {
+void countSecretKeys()
+{
     CK_BBOOL yes = CK_TRUE;
     CK_OBJECT_CLASS objClass = CKO_SECRET_KEY;
-    CK_KEY_TYPE objType = CKK_GENERIC_SECRET;
+    CK_KEY_TYPE objType = CKK_AES;
     CK_OBJECT_HANDLE objHandle[10];
     CK_ULONG objCount = 0;
     CK_ULONG totalObjects = 0;
 
-    CK_ATTRIBUTE attrib[] ={
+    CK_ATTRIBUTE attrib[] = 
+    {
+        { CKA_TOKEN, &yes, sizeof(CK_BBOOL)},
+        { CKA_CLASS, &objClass, sizeof(CK_OBJECT_CLASS)},
+    };
+    CK_ULONG attribLen = sizeof(attrib) / sizeof(*attrib);
+
+    checkOperation(p11Func->C_FindObjectsInit(hSession, attrib, attribLen), "C_FindObjectsInit");
+    do
+    {
+        checkOperation(p11Func->C_FindObjects(hSession, objHandle, 10, &objCount), "C_FindObjects");
+        totalObjects+=objCount;
+    } while(objCount!=0);
+    checkOperation(p11Func->C_FindObjectsFinal(hSession), "C_FindObjectsFinal");
+    cout << "AES keys found : " << totalObjects << endl;
+}
+
+//CryptoEngine
+
+// generateKeySecret(); //botanda dosyaya yaz pkcs11'de makrodaki id ve label ile oluştur anahtarı
+// isKeyInitialized(); //pkcsde oluşturulmuş anahtarları dön makroda tanımlanmış iddeki anahtar var mı bak, botanda dosyaya bak
+// loadKey();
+// Sign();
+// Verify();
+
+
+// PKCS11
+// bunları plain text yerine encrpyt decrypt fonksiyonu implemente de yapabilirsin.
+// importKey()
+// exportKey()
+
+// This functions counts the number of AES keys in a token.
+
+void countSecretKeys1() {
+    //arama kriterleri
+    CK_BBOOL yes = CK_TRUE;
+    CK_OBJECT_CLASS objClass = CKO_SECRET_KEY;
+    CK_KEY_TYPE objType = CKK_GENERIC_SECRET;
+    //arama sonucunu tutacaklar
+    CK_OBJECT_HANDLE objHandle[10]; //key objelerinin içinde tutulacağı array
+    CK_ULONG objCount = 0; //kaç tane obje bulunduğunu içinde tutuacak
+
+    //yukardakilere göre attrib doldur
+    CK_ATTRIBUTE attrib[] = {
         { CKA_TOKEN, &yes, sizeof (CK_BBOOL)},
         { CKA_CLASS, &objClass, sizeof (CK_OBJECT_CLASS)},
-        { CKA_KEY_TYPE, &objType, sizeof (CK_KEY_TYPE)}
     };
     CK_ULONG attribLen = sizeof (attrib) / sizeof (*attrib);
 
+    //key objelerini çek.
     checkOperation(p11Func->C_FindObjectsInit(hSession, attrib, attribLen), "C_FindObjectsInit");
-    do {
-        checkOperation(p11Func->C_FindObjects(hSession, objHandle, 10, &objCount), "C_FindObjects");
-        if (totalObjects >0){
-            CK_BYTE_PTR value_handle;
-            CK_ATTRIBUTE template1[] = {{CKA_LABEL, NULL_PTR, 0}};
-            checkOperation(p11Func->C_GetAttributeValue(hSession, objHandle[2], &template1[0], 1), "C_GetAttributeValue");
+    //bu 100 sayısı önemli onu parametrik yapmaya çalış.
+    checkOperation(p11Func->C_FindObjects(hSession, objHandle, 100, &objCount), "C_FindObjects");
+    
+    std::cout << "bulunan key sayısı: " << objCount << std::endl;
+
+    //eğer obje bulunduysa (bulunmadıysa null vs dönebilirsin)
+    if (objCount > 0) {
+        //bulunan key objelerini işle
+        for (unsigned int i = 0; i < objCount; i++){
+            CK_BYTE_PTR value_handle; //labela ulaşmak için
+            CK_BYTE_PTR id_handle;
+            //attributelere erişmek için bu struct array gerekli. (şimdilik sadece label daha sonra id falan da ekle buraya
+            CK_ATTRIBUTE template1[] = {{CKA_LABEL, NULL_PTR, 0}, {CKA_ID, NULL_PTR, 0}};
+            //label boyut öğrenmek için bir defa çağırıyoruz (ulValueLen doldurmak için)
+            checkOperation(p11Func->C_GetAttributeValue(hSession, objHandle[i], &template1[0], 2), "C_GetAttributeValue");
             value_handle = (CK_BYTE_PTR) malloc(template1[0].ulValueLen);
+            id_handle = (CK_BYTE_PTR) malloc(template1[1].ulValueLen);
             //tempalte pointerını kendi pointerine eşitleyince kendi pointerin üzerinden erişebiiyosun.
             template1[0].pValue = value_handle;
-            checkOperation(p11Func->C_GetAttributeValue(hSession, objHandle[2], &template1[0], 1), "C_GetAttributeValue");
+            template1[1].pValue = id_handle;
             
-            std::cout << "LABEL: " << value_handle << std::endl;
-
-            //bunun unutulmaması lazım.
+            CK_ULONG attribLen = sizeof(attrib) / sizeof(*attrib);
+            checkOperation(p11Func->C_GetAttributeValue(hSession, objHandle[i], &template1[0], attribLen), "C_GetAttributeValue");
+            std::cout << "LABEL: " << value_handle  << " id: " << id_handle << std::endl;
             free(value_handle);
+            free(id_handle);
 
-            /*
-            if (invest.ulValueLen == CK_UNAVAILABLE_INFORMATION){
-                std::cout << "bilgi elde edilemedi" << std::endl;
-            }*/
         }
-        std::cout << "obj count: " << objCount << std::endl;
-        std::cout << "total object count: " << totalObjects << std::endl;
+    }
+    
+    checkOperation(p11Func->C_FindObjects(hSession, objHandle, 10, &objCount), "C_FindObjects");
+    std::cout << "bulunan key sayısı: " << objCount << std::endl;
 
-        totalObjects += objCount;
-    } while (objCount != 0);
+    if (objCount > 0) {
+        std::cout << "daha var" << std::endl;
+    }
+
+    
     checkOperation(p11Func->C_FindObjectsFinal(hSession), "C_FindObjectsFinal");
-    cout << "AES keys found : " << totalObjects << endl;
+
+    
+    //key valid mi diye bakan bir fonksiyon yazabilirsin
 }
 
 /*
@@ -255,9 +334,11 @@ int main(int argc, char **argv) {
     else {
         std::cout << "imza geçersiz" << std::endl;
     }*/
-
+    //generateAesKey();
     //generateHMACSecretKey();
-    countSecretKeys();
+    //countSecretKeys();
+    
+    countSecretKeys1();
 
     disconnectFromSlot();
     cout << "Disconnected from slot." << endl;
